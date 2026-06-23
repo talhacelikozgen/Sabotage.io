@@ -8,8 +8,9 @@
 body { font-family: sans-serif; padding: 15px; background: #fff; color: #000; }
 .hidden { display: none !important; }
 .panel { border: 2px solid #000; padding: 15px; border-radius: 5px; margin-bottom: 15px; }
-input { padding: 8px; width: 100%; max-width: 250px; margin-top: 5px; display: block; border: 2px solid #000; }
+input, select { padding: 8px; width: 100%; max-width: 250px; margin-top: 5px; display: block; border: 2px solid #000; box-sizing: border-box; }
 button { padding: 10px 20px; margin-top: 10px; cursor: pointer; background: #fff; border: 2px solid #000; font-weight: bold; }
+button:hover { background: #eee; }
 .clue-tag { display: inline-block; background: #eee; border: 1px solid #000; padding: 5px 10px; margin: 5px; border-radius: 3px; font-weight: bold; }
 table, th, td { border: 1px solid #000; border-collapse: collapse; padding: 6px; text-align: center; }
 .timer-box { font-size: 20px; font-weight: bold; color: #e11d48; margin-top: 10px; }
@@ -18,55 +19,117 @@ table, th, td { border: 1px solid #000; border-collapse: collapse; padding: 6px;
 .c-system { color: #856404; background: #fff3cd; font-weight: bold; }
 .c-close { color: #d94111; background: #ffe8cc; font-weight: bold; }
 .c-success { color: #155724; background: #d4edda; font-weight: bold; }
+.lobby-list { list-style: none; padding: 0; }
+.lobby-list li { padding: 8px; border: 1px dashed #000; margin-bottom: 5px; background: #f9f9f9; font-weight: bold; }
+.owner-tag { color: #2563eb; font-size: 12px; margin-left: 5px; }
 </style>
 <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
-<div id="setupScreen">
-<h3>GARTIC MULTIPLAYER GİRİŞ</h3>
-<label>Kullanıcı Adınız:</label>
-<input type="text" id="usernameInput" value="Oyuncu">
-<button id="startBtn">Oyuna Katıl</button>
+<!-- 1. GİRİŞ VE SEÇİM EKRANI -->
+<div id="setupScreen" class="panel">
+    <h3>GARTIC MULTIPLAYER GİRİŞ</h3>
+    <label>Kullanıcı Adınız:</label>
+    <input type="text" id="usernameInput" value="SlayerT">
+    <hr style="margin: 15px 0; border: 0; border-top: 1px solid #000;">
+    
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <!-- Oda Kur Bloğu -->
+        <div style="border: 1px solid #000; padding: 10px; border-radius: 4px; flex: 1; min-width: 220px;">
+            <h4>Oda Kur</h4>
+            <label>Oyuncu Sınırı (1-20):</label>
+            <input type="number" id="maxPlayersInput" value="4" min="1" max="20">
+            <label>Tur Süresi:</label>
+            <select id="durationInput">
+                <option value="1">1 Dakika</option>
+                <option value="2">2 Dakika</option>
+                <option value="3" selected>3 Dakika</option>
+                <option value="4">4 Dakika</option>
+                <option value="5">5 Dakika</option>
+                <option value="6">6 Dakika</option>
+            </select>
+            <button id="createRoomBtn">Yeni Oda Oluştur</button>
+        </div>
+
+        <!-- Odaya Katıl Bloğu -->
+        <div style="border: 1px solid #000; padding: 10px; border-radius: 4px; flex: 1; min-width: 220px;">
+            <h4>Odaya Katıl</h4>
+            <label>Oda ID Kodu:</label>
+            <input type="text" id="roomIdInput" placeholder="Örn: XVYU">
+            <button id="joinRoomBtn">Odaya Bağlan</button>
+        </div>
+    </div>
 </div>
 
+<!-- 2. BEKLEME LOBİSİ EKRANI -->
+<div id="lobbyScreen" class="panel hidden">
+    <h3 style="margin-top:0;">Oda Bekleme Salonu</h3>
+    <h2 style="color: #2563eb;">DAVET KODU: <span id="lobbyCodeDisplay">----</span></h2>
+    
+    <h4>Katılımcı Oyuncular:</h4>
+    <ul id="lobbyPlayerList" class="lobby-list"></ul>
+
+    <div id="ownerControls" class="hidden">
+        <p style="color: green; font-weight: bold;">Oda Sahibisiniz. Herkes hazır olduğunda oyunu başlatabilirsiniz.</p>
+        <button id="startGameBtn" style="background: #2563eb; color: #fff;">Oyunu Başlat</button>
+    </div>
+    <div id="playerWaitingMessage">
+        <p style="color: #666;">Oda sahibinin oyunu başlatması bekleniyor...</p>
+    </div>
+</div>
+
+<!-- 3. CANLI OYUN MATRİSİ -->
 <div id="gameScreen" class="hidden">
+    <div class="panel">
+        <h2 id="turnInfo">ANLATICININ SIRASI</h2>
+        <p id="secretDisplay" style="color: red; font-weight: bold;"></p>
+        <div id="timerDisplay" class="timer-box">Kalan Süre: --:--</div>
+    </div>
 
-<div class="panel">
-<h2 id="turnInfo">ANLATICININ SIRASI</h2>
-<p id="secretDisplay" style="color: red; font-weight: bold;"></p>
-<div id="timerDisplay" class="timer-box">Kalan Süre: 05:00</div>
-</div>
+    <div class="panel">
+        <h3>✍️ İpucu Alanı (Sadece Anlatıcı)</h3>
+        <input type="text" id="clueInput" placeholder="İpucu yazıp boşluk bırakın...">
+        <div id="cluePool" style="margin-top: 10px;"></div>
+    </div>
 
-<div class="panel">
-<h3>✍️ İpucu Alanı (Sadece Anlatıcı)</h3>
-<input type="text" id="clueInput" placeholder="İpucu yazıp boşluk bırakın...">
-<div id="cluePool" style="margin-top: 10px;"></div>
-</div>
+    <div class="panel">
+        <h3>💬 Canlı Sohbet ve Tahmin Ekranı</h3>
+        <div id="chatDisplay" class="chat-box"></div>
+        <input type="text" id="guessInput" placeholder="Tahmininizi yazıp boşluk bırakın...">
+    </div>
 
-<div class="panel">
-<h3>💬 Canlı Sohbet ve Tahmin Ekranı</h3>
-<div id="chatDisplay" class="chat-box"></div>
-<input type="text" id="guessInput" placeholder="Tahmininizi yazıp boşluk bırakın...">
-</div>
-
-<div class="panel">
-<h3>📊 Canlı Skor Tablosu</h3>
-<table>
-<thead><tr id="tHead"></tr></thead>
-<tbody><tr id="tBody"></tr></tbody>
-</table>
-</div>
-
+    <div class="panel">
+        <h3>📊 Canlı Skor Tablosu</h3>
+        <table>
+            <thead><tr id="tHead"></tr></thead>
+            <tbody><tr id="tBody"></tr></tbody>
+        </table>
+    </div>
 </div>
 
 <script>
 const socket = io();
 
+// Elementler
 const setupScreen = document.getElementById('setupScreen');
+const lobbyScreen = document.getElementById('lobbyScreen');
 const gameScreen = document.getElementById('gameScreen');
-const startBtn = document.getElementById('startBtn');
+
 const usernameInput = document.getElementById('usernameInput');
+const maxPlayersInput = document.getElementById('maxPlayersInput');
+const durationInput = document.getElementById('durationInput');
+const roomIdInput = document.getElementById('roomIdInput');
+
+const createRoomBtn = document.getElementById('createRoomBtn');
+const joinRoomBtn = document.getElementById('joinRoomBtn');
+const startGameBtn = document.getElementById('startGameBtn');
+
+const lobbyCodeDisplay = document.getElementById('lobbyCodeDisplay');
+const lobbyPlayerList = document.getElementById('lobbyPlayerList');
+const ownerControls = document.getElementById('ownerControls');
+const playerWaitingMessage = document.getElementById('playerWaitingMessage');
+
 const turnInfo = document.getElementById('turnInfo');
 const secretDisplay = document.getElementById('secretDisplay');
 const timerDisplay = document.getElementById('timerDisplay');
@@ -78,19 +141,32 @@ const tHead = document.getElementById('tHead');
 const tBody = document.getElementById('tBody');
 
 let isMyTurn = false;
+let amIOwner = false;
 
-startBtn.addEventListener('click', () => {
-    const nick = usernameInput.value.trim();
-    socket.emit('joinGame', nick);
-    setupScreen.classList.add('hidden');
-    gameScreen.classList.remove('hidden');
+// 1. LOBİ BUTON TETİKLEYİCİLERİ
+createRoomBtn.addEventListener('click', () => {
+    const username = usernameInput.value.trim();
+    const maxPlayers = maxPlayersInput.value;
+    const duration = durationInput.value;
+    if(!username) { alert("Lütfen isim girin!"); return; }
+    
+    socket.emit('createRoom', { username, maxPlayers, duration });
 });
 
-function logSystem(text, className) {
-    chatDisplay.innerHTML += '<div class="c-msg ' + className + '">' + text + '</div>';
-    chatDisplay.scrollTop = chatDisplay.scrollHeight;
-}
+joinRoomBtn.addEventListener('click', () => {
+    const username = usernameInput.value.trim();
+    const roomId = roomIdInput.value.trim();
+    if(!username) { alert("Lütfen isim girin!"); return; }
+    if(!roomId) { alert("Lütfen Oda Kodu girin!"); return; }
+    
+    socket.emit('joinRoom', { username, roomId });
+});
 
+startGameBtn.addEventListener('click', () => {
+    socket.emit('startGame');
+});
+
+// 2. BOŞLUK KONTROLÜ (İpucu ve Tahmin Gönderme)
 function handleSpace(inputElement, eventName) {
     let val = inputElement.value;
     if (val.includes(' ') || val.includes('\n') || /[\s\n]$/.test(val)) {
@@ -105,7 +181,59 @@ function handleSpace(inputElement, eventName) {
 clueInput.addEventListener('input', () => handleSpace(clueInput, 'sendClue'));
 guessInput.addEventListener('input', () => handleSpace(guessInput, 'sendGuess'));
 
-// SUNUCUDAN GELEN OLAYLAR (SOCKET LISTENERS)
+function logSystem(text, className) {
+    chatDisplay.innerHTML += '<div class="c-msg ' + className + '">' + text + '</div>';
+    chatDisplay.scrollTop = chatDisplay.scrollHeight;
+}
+
+// 3. SUNUCUDAN GELEN TELEFON BAĞLANTI SİNYALLERİ
+socket.on('roomJoined', (data) => {
+    setupScreen.classList.add('hidden');
+    lobbyScreen.classList.remove('hidden');
+    lobbyCodeDisplay.textContent = data.roomId;
+    
+    amIOwner = data.isOwner;
+    if (amIOwner) {
+        ownerControls.classList.remove('hidden');
+        playerWaitingMessage.classList.add('hidden');
+    } else {
+        ownerControls.classList.add('hidden');
+        playerWaitingMessage.classList.remove('hidden');
+    }
+    renderLobbyPlayers(data.players);
+});
+
+socket.on('updateLobbyPlayers', (players) => {
+    renderLobbyPlayers(players);
+});
+
+function renderLobbyPlayers(players) {
+    lobbyPlayerList.innerHTML = "";
+    players.forEach(p => {
+        let li = document.createElement('li');
+        li.textContent = p.name;
+        if(p.isOwner) {
+            li.innerHTML += ' <span class="owner-tag">(Sahip)</span>';
+        }
+        lobbyPlayerList.appendChild(li);
+    });
+}
+
+socket.on('makeOwner', () => {
+    amIOwner = true;
+    ownerControls.classList.remove('hidden');
+    playerWaitingMessage.classList.add('hidden');
+});
+
+socket.on('lobbyError', (msg) => {
+    alert(msg);
+});
+
+socket.on('gameStartedSignal', () => {
+    lobbyScreen.classList.add('hidden');
+    gameScreen.classList.remove('hidden');
+});
+
 socket.on('timerUpdate', (timeLeft) => {
     let min = Math.floor(timeLeft / 60);
     let sec = timeLeft % 60;
@@ -132,7 +260,7 @@ socket.on('newRound', (data) => {
     turnInfo.textContent = "ANLATICININ SIRASI (" + data.narratorName.toUpperCase() + ")";
     
     if (isMyTurn) {
-        secretDisplay.textContent = "Tahmin Edilecek Gizli Kelime Sende: (Sunucu Kelimesi)";
+        secretDisplay.textContent = "Tahmin Edilecek Gizli Kelime Sende: araba";
         clueInput.disabled = false;
     } else {
         secretDisplay.textContent = data.narratorName + " anlatıyor. İpuçlarından kelimeyi bul!";
@@ -140,18 +268,11 @@ socket.on('newRound', (data) => {
     }
 });
 
-socket.on('syncRound', (data) => {
-    turnInfo.textContent = "ANLATICININ SIRASI (" + data.narratorName.toUpperCase() + ")";
-    isMyTurn = (socket.id === data.narratorId);
-    clueInput.disabled = !isMyTurn;
-    secretDisplay.textContent = isMyTurn ? "Anlatıcı sensin." : data.narratorName + " anlatıyor.";
-});
-
 socket.on('updatePlayers', (players) => {
     let headHtml = "";
     let bodyHtml = "";
     players.forEach(p => {
-        headHtml += '<th>' + p.name + '</th>';
+        headHtml += '<th>' + p.name + (p.isOwner ? ' (Sahip)' : '') + '</th>';
         bodyHtml += '<td>' + p.score + ' Puan</td>';
     });
     tHead.innerHTML = headHtml;
